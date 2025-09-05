@@ -200,7 +200,7 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 /data/csv/*
-/data/model/*
+/data/model/*.keras
 /data/tensorboard_logs/train/*
 /data/tensorboard_logs/validation/*
 /data/tfrecords/train/*
