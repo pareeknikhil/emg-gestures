@@ -201,10 +201,10 @@ marimo/_lsp/
 __marimo__/
 /data/csv/*
 /data/model/*.keras
-/data/tensorboard_logs/train/*
-/data/tensorboard_logs/validation/*
-/data/tfrecords/train/*
-/data/tfrecords/test/*
-/data/tfrecords/validate/*
+/data/tensorboard_logs/train/*.v2
+/data/tensorboard_logs/validation/*.v2
+/data/tfrecords/train/*.tfrecord
+/data/tfrecords/test/*.tfrecord
+/data/tfrecords/validate/*.tfrecord
 /mlruns
 .python-version
