@@ -199,6 +199,12 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
-/data
+/data/csv/*
+/data/model/*
+/data/tensorboard_logs/train/*
+/data/tensorboard_logs/validation/*
+/data/tfrecords/train/*
+/data/tfrecords/test/*
+/data/tfrecords/validate/*
 /mlruns
 .python-version
