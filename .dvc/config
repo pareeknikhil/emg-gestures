@@ -1,4 +1,4 @@
 [core]
-    remote = storage
-['remote "storage"']
-    url = gdrive://1CZa7a1ay_dYMHlTstxeE-CrCDrmYHdki
+    remote = emg-hand
+['remote "emg-hand"']
+    url = s3://emg-hand
