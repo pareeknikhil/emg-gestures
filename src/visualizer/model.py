@@ -9,7 +9,6 @@ from tensorflow.keras.config import enable_unsafe_deserialization
 
 from configs.constants import HOP_SIZE, ML_WINDOW
 
-from ..utils.tfrecord_utils import per_window_normalization
 from .source import Source
 
 enable_unsafe_deserialization()
@@ -30,8 +29,7 @@ class Model:
 
     def __init__(self, logger) -> None:
         self.logger = logger
-        self.model = models.load_model(ml_model_path,
-                        custom_objects={"per_window_normalization": per_window_normalization})
+        self.model = models.load_model(ml_model_path)
 
         self.emg_feature = np.zeros((Source.get_num_emg_channels(), ML_WINDOW))
         self.label_lookup = json.loads(open(str(label_to_idx)).read())

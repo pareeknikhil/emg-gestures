@@ -23,7 +23,7 @@ if selected_type == "inference":
 elif selected_type == "model":
     run_model()
 else:
-    delete_old_files(selected_type=[selected_type])
+    delete_old_files(selected_type=[selected_type]) ## [TECH DEBT: add different folder fpr combined EMG (removes circular dependency)]
 
     time.sleep(2)
 
