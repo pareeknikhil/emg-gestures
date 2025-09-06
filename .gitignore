@@ -208,3 +208,4 @@ __marimo__/
 /data/tfrecords/validate/*.tfrecord
 /mlruns
 .python-version
+model_summary.txt
