@@ -199,7 +199,8 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
-/data/csv/*
+/data/artifacts/model_summary.txt
+/data/artifacts/confusion_matrix.png
 /data/model/*.keras
 /data/tensorboard_logs/train/*.v2
 /data/tensorboard_logs/validation/*.v2
@@ -208,4 +209,3 @@ __marimo__/
 /data/tfrecords/validate/*.tfrecord
 /mlruns
 .python-version
-model_summary.txt

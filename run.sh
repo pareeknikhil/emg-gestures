@@ -10,13 +10,13 @@ case $1 in
     python -B "$PYTHONPATH/scripts/app.py" 
     ;;
 
-    train|validate|test|model|inference)
+    train|validate|test|model)
     python -B "$PYTHONPATH/scripts/pipeline.py" "$1"
     ;;
     
     *)
     echo "❌ Invalid option!"
-    echo "✅ Usage: $0 [record|train|validate|test|model|inference]"
+    echo "✅ Usage: $0 [record|train|validate|test|model]"
     exit 1
     ;;
 esac
