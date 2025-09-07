@@ -131,7 +131,7 @@ def run_model() -> None:
             'batch_size' : BATCH_SIZE,
             'sequence_length' : ML_WINDOW,
             'input_dimension' : num_emg_channels,
-            'overlap' : ML_WINDOW_OVERLAP,
+            'window_overlap' : ML_WINDOW_OVERLAP,
             'epochs' : EPOCHS,
             'optimizer_name' : 'adam',
             'learning_rate' : LEARNING_RATE,
