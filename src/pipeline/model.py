@@ -16,12 +16,12 @@ from tensorflow.keras import (Input, Model, callbacks, layers, models,
 
 from configs.constants import (BATCH_SIZE, BUFFER_SIZE, EPOCHS, LEARNING_RATE,
                                ML_WINDOW, ML_WINDOW_OVERLAP, TEST_BATCH_SIZE)
-from src.pipeline.deleteTFR import delete_old_files
 
 from ..utils.tfrecord_utils import (PerWindowNormalization, get_all_labels,
                                     get_num_labels)
 from ..visualizer.source import Source
 from .combineTFR import parse_tfrecord_fn
+from .deleteTFR import delete_old_files
 
 tfrecord_path = os.environ.get('TFRECORD_PATH')
 log_path = os.environ.get('LOG_PATH')
