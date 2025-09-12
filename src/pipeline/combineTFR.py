@@ -5,7 +5,7 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 import tensorflow as tf
 from tabulate import tabulate
 
-from configs.constants import ML_WINDOW
+from configs.constants import TIMESTEPS
 
 from ..utils.tfrecord_utils import (get_all_files, get_num_labels,
                                     write_tfrecord)
@@ -24,7 +24,7 @@ def parse_tfrecord_fn(example_proto):
     parsed_example = tf.io.parse_single_example(serialized=example_proto, features=feature_description)
     window = tf.io.parse_tensor(serialized=parsed_example['sequence'], out_type=tf.float32)
     label = parsed_example['label']
-    window.set_shape([ML_WINDOW, num_emg_channels])
+    window.set_shape([TIMESTEPS, num_emg_channels])
     label.set_shape([get_num_labels()])
     return window, label
 

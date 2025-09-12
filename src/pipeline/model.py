@@ -15,7 +15,7 @@ from tensorflow.keras import (Input, Model, callbacks, layers, models,
                               optimizers)
 
 from configs.constants import (BATCH_SIZE, BUFFER_SIZE, EPOCHS, LEARNING_RATE,
-                               ML_WINDOW, ML_WINDOW_OVERLAP, TEST_BATCH_SIZE)
+                               ML_WINDOW_OVERLAP, TEST_BATCH_SIZE, TIMESTEPS)
 
 from ..utils.tfrecord_utils import (PerWindowNormalization, get_all_labels,
                                     get_num_labels)
@@ -95,7 +95,7 @@ def run_model() -> None:
                                     patience=10, min_lr=0.00001, verbose=1)
         ]
 
-        inputs = Input(shape=(ML_WINDOW, num_emg_channels))
+        inputs = Input(shape=(TIMESTEPS, num_emg_channels))
         normalize = PerWindowNormalization()(inputs)
         embedding = layers.TimeDistributed(layers.Dense(units=170, activation='relu'))(normalize)
         lstm_one = layers.LSTM(400, return_sequences=True)(embedding)
@@ -118,7 +118,7 @@ def run_model() -> None:
 
         mlflow.log_artifacts(local_dir=log_path, artifact_path='tensorboard_logs')
 
-        model_input = Schema(inputs=[TensorSpec(type=np.dtype(np.float32), shape= (-1, ML_WINDOW, num_emg_channels), name="EMG_Channels_1_to_8 (OpenBCI)")])
+        model_input = Schema(inputs=[TensorSpec(type=np.dtype(np.float32), shape= (-1, TIMESTEPS, num_emg_channels), name="EMG_Channels_1_to_8 (OpenBCI)")])
         model_output = Schema(inputs=[TensorSpec(type=np.dtype(np.float32), shape= (-1, get_num_labels()), name="Hand_Gestures (Classification)")])
 
         model_signature = ModelSignature(inputs=model_input, outputs=model_output)
@@ -128,7 +128,7 @@ def run_model() -> None:
 
         params = {
             'batch_size' : BATCH_SIZE,
-            'sequence_length' : ML_WINDOW,
+            'sequence_length' : TIMESTEPS,
             'input_dimension' : num_emg_channels,
             'window_overlap' : ML_WINDOW_OVERLAP,
             'epochs' : EPOCHS,

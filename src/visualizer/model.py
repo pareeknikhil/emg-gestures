@@ -7,7 +7,7 @@ import tensorflow as tf
 from tensorflow.keras import models
 from tensorflow.keras.config import enable_unsafe_deserialization
 
-from configs.constants import HOP_SIZE, ML_WINDOW
+from configs.constants import HOP_SIZE, TIMESTEPS
 
 from .source import Source
 
@@ -31,7 +31,7 @@ class Model:
         self.logger = logger
         self.model = models.load_model(ml_model_path)
 
-        self.emg_feature = np.zeros((Source.get_num_emg_channels(), ML_WINDOW))
+        self.emg_feature = np.zeros((Source.get_num_emg_channels(), TIMESTEPS))
         self.label_lookup = json.loads(open(str(label_to_idx)).read())
         self.prediction = None
 

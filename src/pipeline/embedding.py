@@ -12,8 +12,8 @@ from mlflow.types.schema import Schema, TensorSpec
 from tensorflow.keras import (Input, Model, callbacks, layers, models,
                               optimizers)
 
-from configs.constants import (BATCH_SIZE, BUFFER_SIZE, EPOCHS, LEARNING_RATE,
-                               ML_WINDOW, ML_WINDOW_OVERLAP)
+from configs.constants import (BATCH_SIZE, BUFFER_SIZE, EPOCHS, LATENT_DIM,
+                               LEARNING_RATE, ML_WINDOW_OVERLAP, TIMESTEPS)
 
 from ..utils.tfrecord_utils import get_num_labels
 from ..visualizer.source import Source
@@ -39,7 +39,7 @@ def parse_tfrecord_fn(example_proto):
     parsed_example = tf.io.parse_single_example(serialized=example_proto, features=feature_description)
     window = tf.io.parse_tensor(serialized=parsed_example['sequence'], out_type=tf.float32)
     label = parsed_example['label']
-    window.set_shape([ML_WINDOW, num_emg_channels])
+    window.set_shape([TIMESTEPS, num_emg_channels])
     label.set_shape([get_num_labels()])
     return window, window
 
@@ -108,16 +108,21 @@ def run_embedding() -> None:
                                     patience=10, min_lr=0.00001, verbose=1)
         ]
 
-        inputs = Input(shape=(ML_WINDOW, num_emg_channels))
-        encoder_lstm_1 = layers.LSTM(100, return_sequences=True)(inputs)
-        encoder_lstm_2 = layers.LSTM(30)(encoder_lstm_1)
-        decoder_repeat = layers.RepeatVector(ML_WINDOW)(encoder_lstm_2)
-        decoder_lstm = layers.LSTM(100, return_sequences=True)(decoder_repeat)
-        outputs = layers.TimeDistributed(layers.Dense(units=num_emg_channels, activation='relu'))(decoder_lstm)
+        inputs = Input(shape=(TIMESTEPS, num_emg_channels))
 
-        encoder_model = Model(inputs, encoder_lstm_2)
+        #Encoder
+        encoded = layers.LSTM(100, return_sequences=True)(inputs)
+        encoded = layers.LSTM(LATENT_DIM)(encoded)
+
+        #Decoder
+        decoded = layers.RepeatVector(TIMESTEPS)(encoded)
+        decoded = layers.LSTM(100, return_sequences=True)(decoded)
+        outputs = layers.TimeDistributed(layers.Dense(units=num_emg_channels, activation=None))(decoded)
+
+        encoder_model = Model(inputs, encoded)
+        
         recurrent_autoencoder = Model(inputs, outputs)
-        recurrent_autoencoder.compile(optimizer=optimizers.Adam(learning_rate=LEARNING_RATE), loss='mean_squared_error')
+        recurrent_autoencoder.compile(optimizer=optimizers.Adam(learning_rate=LEARNING_RATE), loss='mse')
 
 
         with open(f'{artifact_path}/model_summary.txt', 'w') as f:
@@ -131,8 +136,8 @@ def run_embedding() -> None:
 
         mlflow.log_artifacts(local_dir=log_path, artifact_path='tensorboard_logs')
 
-        model_input = Schema(inputs=[TensorSpec(type=np.dtype(np.float32), shape= (-1, ML_WINDOW, num_emg_channels), name="EMG_Channels_1_to_8 (OpenBCI)")])
-        model_output = Schema(inputs=[TensorSpec(type=np.dtype(np.float32), shape= (-1, ML_WINDOW, num_emg_channels), name="Auto-encoder")])
+        model_input = Schema(inputs=[TensorSpec(type=np.dtype(np.float32), shape= (-1, TIMESTEPS, num_emg_channels), name="EMG_Channels_1_to_8 (OpenBCI)")])
+        model_output = Schema(inputs=[TensorSpec(type=np.dtype(np.float32), shape= (-1, TIMESTEPS, num_emg_channels), name="Auto-encoder")])
 
         model_signature = ModelSignature(inputs=model_input, outputs=model_output)
         best_model = models.load_model(embedding_model_path)
@@ -141,7 +146,7 @@ def run_embedding() -> None:
 
         params = {
             'batch_size' : BATCH_SIZE,
-            'sequence_length' : ML_WINDOW,
+            'sequence_length/timesteps' : TIMESTEPS,
             'input_dimension' : num_emg_channels,
             'window_overlap' : ML_WINDOW_OVERLAP,
             'epochs' : EPOCHS,
