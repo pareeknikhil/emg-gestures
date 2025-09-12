@@ -32,9 +32,6 @@ depedency_path = os.environ.get('DEPENDENCY_FILE')
 dvc_path = os.environ.get('DVC_PATH')
 artifact_path = os.environ.get('ARTIFACTS_PATH')
 
-mlflow.set_tracking_uri(uri=mlflow_path)
-mlflow.set_experiment(experiment_name='gesture-classification')
-
 num_emg_channels = Source.get_num_emg_channels()
 
 def clear_tensorboard_logs() -> None:
@@ -58,6 +55,8 @@ def read_dvc_version():
     return dataset_version
 
 def run_model() -> None:
+    mlflow.set_tracking_uri(uri=mlflow_path)
+    mlflow.set_experiment(experiment_name='emg-gesture')
     with mlflow.start_run() as run:
         clear_tensorboard_logs()
 

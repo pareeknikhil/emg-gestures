@@ -8,18 +8,19 @@ load_env_variables()
 from src.pipeline.combineTFR import (combine_labels,
                                      print_combine_sample_collected)
 from src.pipeline.deleteTFR import delete_old_files
+from src.pipeline.embedding import run_embedding
 from src.pipeline.labelTFR import create_window, print_sample_collected
 from src.pipeline.model import run_model
 from src.pipeline.scale import print_scaled_sample_collected, scale
 from src.utils import \
-    gpu_config  # # [TECH DEBT: add a method instead of script]
+    gpu_config  # # [TECH DEBT: add a method instead of script-run]
 
 selected_type = sys.argv[1]
 
 if selected_type == "model":
     run_model()
 elif selected_type == "embedding":
-    pass
+    run_embedding()
 else:
     delete_old_files(selected_type=[selected_type]) ## [TECH DEBT: add different folder for combined EMG (removes circular dependency)]
 
