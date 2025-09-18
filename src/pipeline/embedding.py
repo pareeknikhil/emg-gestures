@@ -217,7 +217,7 @@ def run_embedding() -> None:
         test_labels = []
         test_embeddings = []
 
-        for embedding, label in mapped_ds.take(3):
+        for embedding, label in mapped_ds:
             test_embeddings.append(embedding.numpy())
             test_labels.extend([tf.compat.as_str_any(l.numpy()) for l in label])
 
