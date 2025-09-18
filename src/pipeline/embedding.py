@@ -1,6 +1,7 @@
 import os
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+import json
 from pathlib import Path
 
 import mlflow
@@ -9,13 +10,15 @@ import tensorflow as tf
 import yaml
 from mlflow.models import ModelSignature
 from mlflow.types.schema import Schema, TensorSpec
+from tensorboard.plugins import projector
 from tensorflow.keras import (Input, Model, callbacks, layers, models,
                               optimizers)
 
 from configs.constants import (BATCH_SIZE, BUFFER_SIZE, EPOCHS, LATENT_DIM,
-                               LEARNING_RATE, ML_WINDOW_OVERLAP, TIMESTEPS)
+                               LEARNING_RATE, ML_WINDOW_OVERLAP,
+                               TEST_BATCH_SIZE, TIMESTEPS)
 
-from ..utils.tfrecord_utils import get_num_labels
+from ..utils.tfrecord_utils import get_all_labels, get_num_labels
 from ..visualizer.source import Source
 from .deleteTFR import delete_old_files
 
@@ -27,7 +30,8 @@ artifact_path = os.environ.get('ARTIFACTS_PATH')
 mlflow_path = os.environ.get('MLRUNS_PATH')
 dvc_path = os.environ.get('DVC_PATH')
 depedency_path = os.environ.get('DEPENDENCY_FILE')
-
+embedding_visualization_path = os.environ.get('EMBEDDING_TENSORBOARD')
+label_idx_mapping_path = os.environ.get('LABEL_IDX_MAPPING')
 
 num_emg_channels = Source.get_num_emg_channels()
 
@@ -66,6 +70,25 @@ def load_tfrecord(filename):
 def load_dataset(selected_type):
     return load_tfrecord(filename=f"{tfrecord_path}/{selected_type}/{scaled_path}")
 
+def parse_tfrecord_fn_test(example_proto):
+    feature_description = {
+        'sequence': tf.io.FixedLenFeature([], tf.string), ## add default_value field : [TECH DEBT]
+        'label': tf.io.FixedLenFeature([get_num_labels()], tf.int64) ## add default value field : [TECH DEBT] 
+    }
+    parsed_example = tf.io.parse_single_example(serialized=example_proto, features=feature_description)
+    window = tf.io.parse_tensor(serialized=parsed_example['sequence'], out_type=tf.float32)
+    label = parsed_example['label']
+    window.set_shape([TIMESTEPS, num_emg_channels])
+    label.set_shape([get_num_labels()])
+    return window, label
+
+def load_tfrecord_test(filename):
+    raw_dataset = tf.data.TFRecordDataset([filename])
+    return raw_dataset.map(parse_tfrecord_fn_test)
+
+def load_dataset_test(selected_type):
+    return load_tfrecord_test(filename=f"{tfrecord_path}/{selected_type}/{scaled_path}")
+
 def read_dvc_version():
     try:
         with open(dvc_path, 'r') as f:
@@ -86,8 +109,10 @@ def run_embedding() -> None:
         train_ds_size = sum(1 for _ in load_dataset(selected_type="train"))
         validation_ds_size = sum(1 for _ in load_dataset(selected_type="validate"))
 
+
         train_steps_per_epoch = int(train_ds_size // BATCH_SIZE)
         validation_steps_per_epoch = int(validation_ds_size // BATCH_SIZE)
+
 
         train_ds = load_dataset(selected_type="train").shuffle(buffer_size=BUFFER_SIZE).repeat()
         train_ds = (train_ds
@@ -98,6 +123,12 @@ def run_embedding() -> None:
         validation_ds = load_dataset(selected_type="validate").shuffle(buffer_size=BUFFER_SIZE).repeat()
         validation_ds = (validation_ds
             .batch(batch_size=BATCH_SIZE, drop_remainder=True)
+            .prefetch(buffer_size=tf.data.AUTOTUNE)
+            )
+
+        test_ds = load_dataset_test(selected_type='test')
+        test_ds = (test_ds
+            .batch(batch_size=TEST_BATCH_SIZE)
             .prefetch(buffer_size=tf.data.AUTOTUNE)
             )
 
@@ -120,7 +151,7 @@ def run_embedding() -> None:
         outputs = layers.TimeDistributed(layers.Dense(units=num_emg_channels, activation=None))(decoded)
 
         encoder_model = Model(inputs, encoded)
-        
+
         recurrent_autoencoder = Model(inputs, outputs)
         recurrent_autoencoder.compile(optimizer=optimizers.Adam(learning_rate=LEARNING_RATE), loss='mse')
 
@@ -133,8 +164,6 @@ def run_embedding() -> None:
         mlflow.log_input(dataset=mlflow_dataset_train, context='training')
 
         history = recurrent_autoencoder.fit(train_ds, epochs=EPOCHS, steps_per_epoch=train_steps_per_epoch, validation_data=validation_ds, validation_steps=validation_steps_per_epoch, callbacks=callback_list)
-
-        mlflow.log_artifacts(local_dir=log_path, artifact_path='tensorboard_logs')
 
         model_input = Schema(inputs=[TensorSpec(type=np.dtype(np.float32), shape= (-1, TIMESTEPS, num_emg_channels), name="EMG_Channels_1_to_8 (OpenBCI)")])
         model_output = Schema(inputs=[TensorSpec(type=np.dtype(np.float32), shape= (-1, TIMESTEPS, num_emg_channels), name="Auto-encoder")])
@@ -167,3 +196,48 @@ def run_embedding() -> None:
         }
 
         mlflow.log_metrics(metrics)
+
+        with open(label_idx_mapping_path) as file:
+            label_idx_map = json.load(file)
+
+        keys = tf.constant([int(k) for k in label_idx_map.keys()], dtype=tf.int64)
+        values = tf.constant(list(label_idx_map.values()), dtype=tf.string)
+
+        table = tf.lookup.StaticHashTable(initializer=tf.lookup.KeyValueTensorInitializer(keys, values),
+                                          default_value="UNKNOWN")
+
+        def map_labels(window, label):
+            idx = tf.argmax(label, axis=-1)
+            gesture = table.lookup(idx)
+            latent_vector = encoder_model(window, training=False)
+            return latent_vector, gesture
+
+        mapped_ds = test_ds.map(map_labels)
+
+        test_labels = []
+        test_embeddings = []
+
+        for embedding, label in mapped_ds.take(3):
+            test_embeddings.append(embedding.numpy())
+            test_labels.extend([tf.compat.as_str_any(l.numpy()) for l in label])
+
+        test_embeddings = np.concatenate(test_embeddings, axis=0)
+
+        metadata_path = os.path.join(embedding_visualization_path, "metadata.tsv")
+
+        with open(metadata_path, "w") as f:
+            for label in test_labels:
+                f.write(f"{label}\n")
+
+        embedding_var = tf.Variable(test_embeddings, name="latent_embeddings")
+
+        checkpoint = tf.train.Checkpoint(embedding=embedding_var)
+        checkpoint.save(os.path.join(embedding_visualization_path, "embedding.ckpt"))
+
+        config = projector.ProjectorConfig()
+        embedding = config.embeddings.add()
+        embedding.tensor_name = embedding_var.name
+        embedding.metadata_path = "metadata.tsv"  # relative path to log_dir
+        projector.visualize_embeddings(embedding_visualization_path, config)
+
+        mlflow.log_artifacts(local_dir=log_path, artifact_path='tensorboard_logs')
