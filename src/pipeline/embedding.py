@@ -18,7 +18,7 @@ from configs.constants import (BATCH_SIZE, BUFFER_SIZE, EPOCHS, LATENT_DIM,
                                LEARNING_RATE, ML_WINDOW_OVERLAP,
                                TEST_BATCH_SIZE, TIMESTEPS)
 
-from ..utils.tfrecord_utils import get_all_labels, get_num_labels
+from ..utils.tfrecord_utils import get_num_labels
 from ..visualizer.source import Source
 from .deleteTFR import delete_old_files
 
@@ -236,7 +236,7 @@ def run_embedding() -> None:
 
         config = projector.ProjectorConfig()
         embedding = config.embeddings.add()
-        embedding.tensor_name = embedding_var.name
+        embedding.tensor_name = "embedding/.ATTRIBUTES/VARIABLE_VALUE"
         embedding.metadata_path = "metadata.tsv"  # relative path to log_dir
         projector.visualize_embeddings(embedding_visualization_path, config)
 
