@@ -143,11 +143,11 @@ def run_embedding() -> None:
 
         #Encoder
         encoded = layers.LSTM(100, return_sequences=True)(inputs)
-        encoded = layers.LSTM(LATENT_DIM, return_sequences=False)(encoded)
+        encoded = layers.LSTM(LATENT_DIM)(encoded)
 
         #Decoder
         decoded = layers.RepeatVector(TIMESTEPS)(encoded)
-        decoded = layers.LSTM(LATENT_DIM, return_sequences=True)(decoded)   # symmetric
+        decoded = layers.LSTM(LATENT_DIM, return_sequences=True)(decoded)
         decoded = layers.LSTM(100, return_sequences=True)(decoded)
         outputs = layers.TimeDistributed(layers.Dense(units=num_emg_channels, activation=None))(decoded)
 
