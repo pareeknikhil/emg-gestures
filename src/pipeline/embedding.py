@@ -142,14 +142,27 @@ def run_embedding() -> None:
         inputs = Input(shape=(TIMESTEPS, num_emg_channels))
 
         #Encoder
-        encoded = layers.LSTM(100, return_sequences=True)(inputs)
+        encoded = layers.Conv1D(32, kernel_size=5, activation="relu", padding="same")(inputs)
+        encoded = layers.Conv1D(64, kernel_size=5, activation="relu", padding="same")(encoded)
+        encoded = layers.LSTM(100, return_sequences=True)(encoded)
         encoded = layers.LSTM(LATENT_DIM)(encoded)
+        
+        # encoded = layers.LSTM(100, return_sequences=True)(inputs)
+        # encoded = layers.LSTM(LATENT_DIM)(encoded)
 
         #Decoder
+
         decoded = layers.RepeatVector(TIMESTEPS)(encoded)
         decoded = layers.LSTM(LATENT_DIM, return_sequences=True)(decoded)
         decoded = layers.LSTM(100, return_sequences=True)(decoded)
-        outputs = layers.TimeDistributed(layers.Dense(units=num_emg_channels, activation=None))(decoded)
+        decoded = layers.Conv1DTranspose(64, kernel_size=5, activation="relu", padding="same")(decoded)
+        decoded = layers.Conv1DTranspose(32, kernel_size=5, activation="relu", padding="same")(decoded)
+        outputs = layers.TimeDistributed(layers.Dense(num_emg_channels))(decoded)
+
+        # decoded = layers.RepeatVector(TIMESTEPS)(encoded)
+        # decoded = layers.LSTM(LATENT_DIM, return_sequences=True)(decoded)
+        # decoded = layers.LSTM(100, return_sequences=True)(decoded)
+        # outputs = layers.TimeDistributed(layers.Dense(units=num_emg_channels, activation=None))(decoded)
 
         encoder_model = Model(inputs, encoded)
 
