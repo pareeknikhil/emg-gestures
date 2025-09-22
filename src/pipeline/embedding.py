@@ -145,8 +145,8 @@ def run_embedding() -> None:
         encoded = layers.Conv1D(32, kernel_size=5, activation="relu", padding="same")(inputs)
         encoded = layers.Conv1D(64, kernel_size=5, activation="relu", padding="same")(encoded)
         encoded = layers.LSTM(100, return_sequences=True)(encoded)
-        encoded = layers.LSTM(LATENT_DIM)(encoded)
-        
+        encoded = layers.LSTM(LATENT_DIM, return_sequences=False)(encoded)
+
         # encoded = layers.LSTM(100, return_sequences=True)(inputs)
         # encoded = layers.LSTM(LATENT_DIM)(encoded)
 
