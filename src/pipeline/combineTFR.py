@@ -32,7 +32,7 @@ def combine_labels(selected_type) -> None:
     file_pattern = f'{tfrecord_path}/{selected_type}/*.tfrecord'
     file_ds = get_all_files(pattern=file_pattern, shuffle_flag=False)
 
-    dataset = tf.data.TFRecordDataset(filenames=file_ds, num_parallel_reads=tf.data.AUTOTUNE)
+    dataset = tf.data.TFRecordDataset(filenames=file_ds, num_parallel_reads=get_num_labels())
     combined_dataset = dataset.map(map_func=parse_tfrecord_fn, num_parallel_calls=tf.data.AUTOTUNE) ## also return dataset size here when returning transformed dataset (num_samples) : [TECH DEBT]
 
     write_tfrecord(dataset=combined_dataset, filename=f"{tfrecord_path}/{selected_type}/{combined_emg_file}")
