@@ -1,6 +1,7 @@
 import os
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+import csv
 import json
 from pathlib import Path
 
@@ -255,3 +256,22 @@ def run_embedding() -> None:
         projector.visualize_embeddings(embedding_visualization_path, config)
 
         mlflow.log_artifacts(local_dir=log_path, artifact_path='tensorboard_logs')
+
+
+        # test_embeddings: shape (N, D)
+        # test_labels:     length N
+
+        csv_path = f"{artifact_path}/embeddings_with_labels.csv"
+
+        with open(csv_path, "w", newline="") as f:
+            writer = csv.writer(f)
+            # header: first column is label, then embedding_0 ... embedding_{D-1}
+            header = ["label"] + [f"dim_{i}" for i in range(test_embeddings.shape[1])]
+            writer.writerow(header)
+
+            for label, emb in zip(test_labels, test_embeddings):
+                writer.writerow([label] + emb.tolist())
+
+        print(f"Saved {len(test_labels)} rows to {csv_path}")
+
+        mlflow.log_artifact(csv_path)

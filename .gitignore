@@ -201,6 +201,7 @@ marimo/_lsp/
 __marimo__/
 /data/artifacts/model_summary.txt
 /data/artifacts/confusion_matrix.png
+/data/artifacts/embeddings_with_labels.csv
 /data/model/*.keras
 /data/tensorboard_logs/train/*.v2
 /data/tensorboard_logs/validation/*.v2
