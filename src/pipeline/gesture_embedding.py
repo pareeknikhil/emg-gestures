@@ -64,7 +64,7 @@ def read_dvc_version():
 
 def run_model() -> None:
     mlflow.set_tracking_uri(uri=mlflow_path)
-    mlflow.set_experiment(experiment_name='emg-gesture')
+    mlflow.set_experiment(experiment_name='emg-gesture-embedding')
     with mlflow.start_run() as run:
         clear_tensorboard_logs()
 
