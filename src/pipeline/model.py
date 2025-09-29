@@ -18,8 +18,9 @@ from tensorboard.plugins import projector
 from tensorflow.keras import (Input, Model, callbacks, layers, models,
                               optimizers)
 
-from configs.constants import (BATCH_SIZE, BUFFER_SIZE, EPOCHS, LEARNING_RATE,
-                               ML_WINDOW_OVERLAP, TEST_BATCH_SIZE, TIMESTEPS)
+from configs.constants import (BATCH_SIZE, BUFFER_SIZE, EPOCHS, LATENT_DIM,
+                               LEARNING_RATE, ML_WINDOW_OVERLAP,
+                               TEST_BATCH_SIZE, TIMESTEPS)
 
 from ..utils.tfrecord_utils import (PerWindowNormalization, get_all_labels,
                                     get_num_labels)
@@ -107,7 +108,7 @@ def run_model() -> None:
         embedding = layers.TimeDistributed(layers.Dense(units=170, activation='relu'))(normalize)
         lstm_one = layers.LSTM(400, return_sequences=True)(embedding)
         lstm_one = layers.Dropout(0.3)(lstm_one)
-        lstm_two = layers.LSTM(64, name="lstm_final")(lstm_one)
+        lstm_two = layers.LSTM(LATENT_DIM, name="lstm_final")(lstm_one)
         lstm_two = layers.Dropout(0.3)(lstm_two)
         outputs = layers.Dense(units=get_num_labels(), activation='softmax')(lstm_two)
 
