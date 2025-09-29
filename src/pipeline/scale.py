@@ -4,7 +4,7 @@ import tensorflow as tf
 from tabulate import tabulate
 
 from ..utils.tfrecord_utils import write_tfrecord
-from .model import load_dataset
+from .gesture_embedding import load_dataset
 
 tfrecord_path = os.environ.get('TFRECORD_PATH')
 scaled_path = os.environ.get('SCALED_EMG_FILE')
