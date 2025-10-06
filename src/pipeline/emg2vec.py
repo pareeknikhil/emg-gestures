@@ -1,10 +1,6 @@
 import os
-from cProfile import label
-from venv import create
 
 import tensorflow as tf
-from sqlalchemy import false
-from xgboost import train
 
 from ..utils.tfrecord_utils import get_all_files, get_all_labels
 
@@ -29,4 +25,4 @@ def run_clr() -> None:
         file_ds = get_all_files(pattern=file_pattern, shuffle_flag=True)
         train_ds = file_ds.map(load_and_parse_window_csv, num_parallel_calls=1, deterministic=True)
         for elm in train_ds.take(1):
-            pass
+            print(elm)
