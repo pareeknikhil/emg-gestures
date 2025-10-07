@@ -1,15 +1,19 @@
 import os
 
 import tensorflow as tf
+from tensorflow.keras import Model, layers
 
-from configs.constants import (BATCH_SIZE, ML_WINDOW_OVERLAP, NEG_DIST,
-                               POS_NEIGHBOR, TIMESTEPS)
+from configs.constants import (BATCH_SIZE, LATENT_DIM, ML_WINDOW_OVERLAP,
+                               NEG_DIST, POS_NEIGHBOR, TIMESTEPS)
 
 from ..utils.tfrecord_utils import get_all_files, get_all_labels
+from ..visualizer.source import Source
 
 csv_path = os.environ.get('CSV_PATH')
 
 selected_type = 'train'
+num_emg_channels = Source.get_num_emg_channels()
+
 
 def load_and_parse_window_csv(filepath):
     tf.print("****")
@@ -46,9 +50,54 @@ def load_and_parse_window_csv(filepath):
     return tf.data.Dataset.from_tensor_slices((anchors, positives, negatives))
 
 def run_clr() -> None:
+    # ---------------- DATASET PIPELINE ----------------
     label_classes = get_all_labels(selected_type)
     file_patterns = [f'{csv_path}/{selected_type}/{folder}/*.csv' for folder in label_classes]
     file_ds = get_all_files(pattern=file_patterns, shuffle_flag=False)
-    train_ds = file_ds.take(2).flat_map(load_and_parse_window_csv)
-    for x in train_ds:
-        print(tf.shape(x))
+
+    train_ds = (
+        file_ds
+        .flat_map(load_and_parse_window_csv)  # one file at a time
+        .shuffle(4096)
+        .batch(BATCH_SIZE, drop_remainder=True)
+        .prefetch(tf.data.AUTOTUNE)
+    )
+
+    # ---------------- ENCODER ----------------
+    def build_encoder(input_shape=(TIMESTEPS, num_emg_channels), latent_dim=LATENT_DIM):
+        inp = layers.Input(shape=input_shape)
+        x = layers.Conv1D(64, 5, strides=2, activation='relu', padding='same')(inp)
+        x = layers.Conv1D(128, 3, strides=2, activation='relu', padding='same')(x)
+        x = layers.GlobalAveragePooling1D()(x)
+        x = layers.Dense(latent_dim)(x)
+        out = layers.Lambda(lambda z: tf.math.l2_normalize(z, axis=-1))(x)
+        return Model(inp, out)
+
+    encoder = build_encoder()
+
+    # ---------------- CUSTOM TRIPLET MODEL ----------------
+    class TripletModel(Model):
+        def __init__(self, encoder, margin=1.0):
+            super().__init__()
+            self.encoder = encoder
+            self.margin = margin
+
+        def call(self, inputs, training=False):
+            # inputs is a list of 3 tensors from dataset: [anchor, positive, negative]
+            a, p, n = inputs
+            z_a = self.encoder(a, training=training)
+            z_p = self.encoder(p, training=training)
+            z_n = self.encoder(n, training=training)
+
+            # triplet loss
+            pos_dist = tf.reduce_sum(tf.square(z_a - z_p), axis=-1)
+            neg_dist = tf.reduce_sum(tf.square(z_a - z_n), axis=-1)
+            loss = tf.reduce_mean(tf.maximum(pos_dist - neg_dist + self.margin, 0.0))
+            self.add_loss(loss)
+            return {"anchor": z_a, "positive": z_p, "negative": z_n}
+
+    triplet_model = TripletModel(encoder)
+    triplet_model.compile(optimizer=tf.keras.optimizers.Adam(1e-3))
+
+    # ---------------- TRAIN ----------------
+    triplet_model.fit(train_ds, epochs=10)
