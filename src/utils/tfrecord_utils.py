@@ -1,4 +1,5 @@
 import os
+from typing import Any
 
 import tensorflow as tf
 from tensorflow.keras.layers import Layer
@@ -14,7 +15,7 @@ def get_num_labels(selected_type="train") -> int: ## default from train
     train_path = os.path.join(csv_path, selected_type)
     return len(tf.io.gfile.listdir(path=train_path))
 
-def get_all_files(pattern: str, shuffle_flag: bool) -> tf.data.Dataset:
+def get_all_files(pattern: Any, shuffle_flag: bool) -> tf.data.Dataset:
     return tf.data.Dataset.list_files(file_pattern=pattern, shuffle=shuffle_flag)
 
 def write_tfrecord(dataset: tf.data.Dataset, filename: str) -> None:
