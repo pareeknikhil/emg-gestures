@@ -1,5 +1,6 @@
 import os
 
+import numpy as np
 import tensorflow as tf
 from tensorflow.keras import Model, layers
 
@@ -16,8 +17,6 @@ num_emg_channels = Source.get_num_emg_channels()
 
 
 def load_and_parse_window_csv(filepath):
-    tf.print("****")
-    tf.print(filepath)
     text = tf.io.read_file(filepath)
     lines = tf.strings.split(text, sep='\n')
     lines = tf.boolean_mask(lines, tf.strings.length(lines) > 0)
@@ -47,7 +46,13 @@ def load_and_parse_window_csv(filepath):
         return windows[neg_idx]
 
     negatives = tf.map_fn(sample_neg, indices, fn_output_signature=tf.float32)
-    return tf.data.Dataset.from_tensor_slices((anchors, positives, negatives))
+
+    ds_a = tf.data.Dataset.from_tensor_slices(anchors)
+    ds_p = tf.data.Dataset.from_tensor_slices(positives)
+    ds_n = tf.data.Dataset.from_tensor_slices(negatives)
+    return tf.data.Dataset.zip((ds_a, ds_p, ds_n))
+    # return tf.data.Dataset.from_tensor_slices((anchors, positives, negatives))
+
 
 def run_clr() -> None:
     # ---------------- DATASET PIPELINE ----------------
@@ -59,9 +64,23 @@ def run_clr() -> None:
         file_ds
         .flat_map(load_and_parse_window_csv)  # one file at a time
         .shuffle(4096)
-        .batch(BATCH_SIZE, drop_remainder=True)
+        # .batch(batch_size=BATCH_SIZE, drop_remainder=True)
         .prefetch(tf.data.AUTOTUNE)
     )
+
+    anchor = []
+    positive = []
+    negative = []
+
+    for a, p, n in train_ds:
+        anchor.append(a)
+        positive.append(p)
+        negative.append(n)
+
+    anchor_numpy = np.array(anchor)
+    positive_numpy = np.array(positive)
+    negative_numpy = np.array(negative)
+
 
     # ---------------- ENCODER ----------------
     def build_encoder(input_shape=(TIMESTEPS, num_emg_channels), latent_dim=LATENT_DIM):
@@ -69,35 +88,32 @@ def run_clr() -> None:
         x = layers.Conv1D(64, 5, strides=2, activation='relu', padding='same')(inp)
         x = layers.Conv1D(128, 3, strides=2, activation='relu', padding='same')(x)
         x = layers.GlobalAveragePooling1D()(x)
+        # x = layers.LSTM(64, return_sequences=True)(x)
+        # x = layers.LSTM(32)(x)
         x = layers.Dense(latent_dim)(x)
         out = layers.Lambda(lambda z: tf.math.l2_normalize(z, axis=-1))(x)
         return Model(inp, out)
 
-    encoder = build_encoder()
+    embedding_model = build_encoder()
 
-    # ---------------- CUSTOM TRIPLET MODEL ----------------
-    class TripletModel(Model):
-        def __init__(self, encoder, margin=1.0):
-            super().__init__()
-            self.encoder = encoder
-            self.margin = margin
+    @tf.function
+    def triplet_loss(anchor, positive, negative, margin=0.5):
+        pos_dist = tf.reduce_sum(tf.square(anchor - positive), axis=1)
+        neg_dist = tf.reduce_sum(tf.square(anchor - negative), axis=1)
+        loss = tf.maximum(pos_dist - neg_dist + margin, 0.0)
+        return tf.reduce_mean(loss)
+    
+    optimizer = tf.keras.optimizers.Adam(0.01)
 
-        def call(self, inputs, training=False):
-            # inputs is a list of 3 tensors from dataset: [anchor, positive, negative]
-            a, p, n = inputs
-            z_a = self.encoder(a, training=training)
-            z_p = self.encoder(p, training=training)
-            z_n = self.encoder(n, training=training)
+    for epoch in range(10):
+        with tf.GradientTape() as tape:
+            anchor_embed = embedding_model(anchor_numpy, training=True)
+            pos_embed = embedding_model(positive_numpy, training=True)
+            neg_embed = embedding_model(negative_numpy, training=True)
 
-            # triplet loss
-            pos_dist = tf.reduce_sum(tf.square(z_a - z_p), axis=-1)
-            neg_dist = tf.reduce_sum(tf.square(z_a - z_n), axis=-1)
-            loss = tf.reduce_mean(tf.maximum(pos_dist - neg_dist + self.margin, 0.0))
-            self.add_loss(loss)
-            return {"anchor": z_a, "positive": z_p, "negative": z_n}
+            loss = triplet_loss(anchor_embed, pos_embed, neg_embed)
 
-    triplet_model = TripletModel(encoder)
-    triplet_model.compile(optimizer=tf.keras.optimizers.Adam(1e-3))
+        grads = tape.gradient(loss, embedding_model.trainable_variables)
+        optimizer.apply_gradients(zip(grads, embedding_model.trainable_variables))
 
-    # ---------------- TRAIN ----------------
-    triplet_model.fit(train_ds, epochs=10)
+        print(f"Epoch {epoch+1}: Loss = {loss.numpy():.4f}")
