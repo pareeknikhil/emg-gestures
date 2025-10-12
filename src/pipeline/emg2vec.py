@@ -63,7 +63,7 @@ def run_clr() -> None:
     train_ds = (
         file_ds
         .flat_map(load_and_parse_window_csv)  # one file at a time
-        .shuffle(4096)
+        .shuffle(buffer_size=4096)
         # .batch(batch_size=BATCH_SIZE, drop_remainder=True)
         .prefetch(tf.data.AUTOTUNE)
     )
@@ -80,6 +80,8 @@ def run_clr() -> None:
     anchor_numpy = np.array(anchor)
     positive_numpy = np.array(positive)
     negative_numpy = np.array(negative)
+    triplet_ds = tf.data.Dataset.from_tensor_slices((anchor_numpy, positive_numpy, negative_numpy))
+    triplet_ds = triplet_ds.shuffle(4000).batch(BATCH_SIZE)
 
 
     # ---------------- ENCODER ----------------
@@ -96,24 +98,37 @@ def run_clr() -> None:
 
     embedding_model = build_encoder()
 
-    @tf.function
     def triplet_loss(anchor, positive, negative, margin=0.5):
         pos_dist = tf.reduce_sum(tf.square(anchor - positive), axis=1)
         neg_dist = tf.reduce_sum(tf.square(anchor - negative), axis=1)
         loss = tf.maximum(pos_dist - neg_dist + margin, 0.0)
         return tf.reduce_mean(loss)
     
-    optimizer = tf.keras.optimizers.Adam(0.01)
+    class TripletModel(tf.keras.Model):
+        def __init__(self, embedding_model, margin=0.5):
+            super().__init__()
+            self.embedding_model = embedding_model
+            self.margin = margin
+        
+        def call(self, inputs):
+            a, p, n = inputs
+            a_embed = self.embedding_model(a)
+            p_embed = self.embedding_model(p)
+            n_embed = self.embedding_model(n)
+            return (a_embed, p_embed, n_embed)
 
-    for epoch in range(10):
-        with tf.GradientTape() as tape:
-            anchor_embed = embedding_model(anchor_numpy, training=True)
-            pos_embed = embedding_model(positive_numpy, training=True)
-            neg_embed = embedding_model(negative_numpy, training=True)
+        def train_step(self, data):
+            a, p, n = data
+            with tf.GradientTape() as tape:
+                a_embed, p_embed, n_embed = self((a, p, n), training=True)
+                loss = triplet_loss(a_embed, p_embed, n_embed, self.margin)
+            grads = tape.gradient(loss, self.embedding_model.trainable_variables)
+            self.optimizer.apply_gradients(zip(grads, self.embedding_model.trainable_variables))
+            return {"loss": loss}
 
-            loss = triplet_loss(anchor_embed, pos_embed, neg_embed)
+    model = TripletModel(embedding_model)
+    model.compile(optimizer = tf.keras.optimizers.Adam(0.01))
 
-        grads = tape.gradient(loss, embedding_model.trainable_variables)
-        optimizer.apply_gradients(zip(grads, embedding_model.trainable_variables))
-
-        print(f"Epoch {epoch+1}: Loss = {loss.numpy():.4f}")
+    history = model.fit(
+        triplet_ds,
+        epochs=2)
