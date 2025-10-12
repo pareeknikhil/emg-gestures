@@ -81,6 +81,7 @@ def run_clr() -> None:
             train_file_ds
             .flat_map(load_and_parse_window_csv)  # one file at a time
             .shuffle(buffer_size=4096)
+            .repeat()
             .batch(batch_size=BATCH_SIZE, drop_remainder=True)
             .prefetch(tf.data.AUTOTUNE)
         )
@@ -89,10 +90,13 @@ def run_clr() -> None:
         validation_ds = (
             validation_file_ds
             .flat_map(load_and_parse_window_csv)  # one file at a time
-            .shuffle(buffer_size=4096)
-            .batch(batch_size=BATCH_SIZE, drop_remainder=True)
+            .repeat()
+            .batch(batch_size=BATCH_SIZE, drop_remainder=False)
             .prefetch(tf.data.AUTOTUNE)
         )
+
+        ## Optimize this no need for train_ds as a dataset and also train steps per epoch
+        ## check if the its working well end-to-end
 
         train_steps_per_epoch = sum(1 for _ in train_ds)
         validation_steps_per_epoch = sum(1 for _ in validation_ds)
