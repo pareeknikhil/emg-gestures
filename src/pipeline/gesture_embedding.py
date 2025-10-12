@@ -68,9 +68,9 @@ def run_model() -> None:
     with mlflow.start_run() as run:
         clear_tensorboard_logs()
 
-        train_ds_size = sum(1 for _ in load_dataset(selected_type="train"))
-        validation_ds_size = sum(1 for _ in load_dataset(selected_type="validate"))
-        test_ds_size = sum(1 for _ in load_dataset(selected_type="test"))
+        train_ds_size = sum(1 for _ in load_dataset(selected_type='train'))
+        validation_ds_size = sum(1 for _ in load_dataset(selected_type='validate'))
+        test_ds_size = sum(1 for _ in load_dataset(selected_type='test'))
 
 
         train_steps_per_epoch = int(train_ds_size // BATCH_SIZE)
@@ -78,26 +78,26 @@ def run_model() -> None:
         test_steps_per_epoch = int(test_ds_size // TEST_BATCH_SIZE)
 
 
-        train_ds = load_dataset(selected_type="train").shuffle(buffer_size=BUFFER_SIZE).repeat()
+        train_ds = load_dataset(selected_type='train').shuffle(buffer_size=BUFFER_SIZE).repeat()
         train_ds = (train_ds
             .batch(batch_size=BATCH_SIZE, drop_remainder=True)
             .prefetch(buffer_size=tf.data.AUTOTUNE)
             )
 
-        validation_ds = load_dataset(selected_type="validate").shuffle(buffer_size=BUFFER_SIZE).repeat()
+        validation_ds = load_dataset(selected_type='validate').shuffle(buffer_size=BUFFER_SIZE).repeat()
         validation_ds = (validation_ds
             .batch(batch_size=BATCH_SIZE, drop_remainder=True)
             .prefetch(buffer_size=tf.data.AUTOTUNE)
             )
 
-        test_ds = load_dataset(selected_type="test")
+        test_ds = load_dataset(selected_type='test')
         test_ds = (test_ds
             .batch(batch_size=TEST_BATCH_SIZE)
             .prefetch(buffer_size=tf.data.AUTOTUNE)
             )
 
         callback_list = [
-            callbacks.ModelCheckpoint(filepath=ml_model_path, monitor="val_loss", save_best_only=True),
+            callbacks.ModelCheckpoint(filepath=ml_model_path, monitor='val_loss', save_best_only=True),
             callbacks.TensorBoard(log_dir=log_path),
             callbacks.ReduceLROnPlateau(monitor='val_loss', factor=0.5,
                                     patience=10, min_lr=0.00001, verbose=1)
@@ -108,7 +108,7 @@ def run_model() -> None:
         embedding = layers.TimeDistributed(layers.Dense(units=170, activation='relu'))(normalize)
         lstm_one = layers.LSTM(400, return_sequences=True)(embedding)
         lstm_one = layers.Dropout(0.3)(lstm_one)
-        lstm_two = layers.LSTM(LATENT_DIM, name="lstm_final")(lstm_one)
+        lstm_two = layers.LSTM(LATENT_DIM, name='lstm_final')(lstm_one)
         lstm_two = layers.Dropout(0.3)(lstm_two)
         outputs = layers.Dense(units=get_num_labels(), activation='softmax')(lstm_two)
 
@@ -128,8 +128,8 @@ def run_model() -> None:
 
         # mlflow.log_artifacts(local_dir=log_path, artifact_path='tensorboard_logs')
 
-        model_input = Schema(inputs=[TensorSpec(type=np.dtype(np.float32), shape= (-1, TIMESTEPS, num_emg_channels), name="EMG_Channels_1_to_8 (OpenBCI)")])
-        model_output = Schema(inputs=[TensorSpec(type=np.dtype(np.float32), shape= (-1, get_num_labels()), name="Hand_Gestures (Classification)")])
+        model_input = Schema(inputs=[TensorSpec(type=np.dtype(np.float32), shape= (-1, TIMESTEPS, num_emg_channels), name='EMG_Channels_1_to_8 (OpenBCI)')])
+        model_output = Schema(inputs=[TensorSpec(type=np.dtype(np.float32), shape= (-1, get_num_labels()), name='Hand_Gestures (Classification)')])
 
         model_signature = ModelSignature(inputs=model_input, outputs=model_output)
         best_model = models.load_model(ml_model_path)
@@ -199,7 +199,7 @@ def run_model() -> None:
         values = tf.constant(list(label_idx_map.values()), dtype=tf.string)
 
         table = tf.lookup.StaticHashTable(initializer=tf.lookup.KeyValueTensorInitializer(keys, values),
-                                          default_value="UNKNOWN")
+                                          default_value='UNKNOWN')
 
         def map_labels(window, label):
             idx = tf.argmax(label, axis=-1)
@@ -218,20 +218,20 @@ def run_model() -> None:
 
         test_embeddings = np.concatenate(test_embeddings, axis=0)
 
-        metadata_path = os.path.join(embedding_visualization_path, "metadata.tsv")
+        metadata_path = os.path.join(embedding_visualization_path, 'metadata.tsv')
 
         with open(metadata_path, "w") as f:
             for label in test_labels:
                 f.write(f"{label}\n")
 
-        embedding_var = tf.Variable(test_embeddings, name="latent_embeddings")
+        embedding_var = tf.Variable(test_embeddings, name='latent_embeddings')
 
         checkpoint = tf.train.Checkpoint(embedding=embedding_var)
-        checkpoint.save(os.path.join(embedding_visualization_path, "embedding.ckpt"))
+        checkpoint.save(os.path.join(embedding_visualization_path, 'embedding.ckpt'))
 
         config = projector.ProjectorConfig()
         embedding = config.embeddings.add()
-        embedding.tensor_name = "embedding/.ATTRIBUTES/VARIABLE_VALUE"
+        embedding.tensor_name = 'embedding/.ATTRIBUTES/VARIABLE_VALUE'
         embedding.metadata_path = "metadata.tsv"  # relative path to log_dir
         projector.visualize_embeddings(embedding_visualization_path, config)
 
@@ -241,17 +241,17 @@ def run_model() -> None:
         # test_embeddings: shape (N, D)
         # test_labels:     length N
 
-        csv_path = f"{artifact_path}/embeddings_with_labels.csv"
+        csv_path = f'{artifact_path}/embeddings_with_labels.csv'
 
-        with open(csv_path, "w", newline="") as f:
+        with open(csv_path, 'w', newline='') as f:
             writer = csv.writer(f)
             # header: first column is label, then embedding_0 ... embedding_{D-1}
-            header = ["label"] + [f"dim_{i}" for i in range(test_embeddings.shape[1])]
+            header = ['label'] + [f'dim_{i}' for i in range(test_embeddings.shape[1])]
             writer.writerow(header)
 
             for label, emb in zip(test_labels, test_embeddings):
                 writer.writerow([label] + emb.tolist())
 
-        print(f"Saved {len(test_labels)} rows to {csv_path}")
+        print(f'Saved {len(test_labels)} rows to {csv_path}')
 
         mlflow.log_artifact(csv_path)
