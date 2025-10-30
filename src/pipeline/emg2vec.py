@@ -10,7 +10,7 @@ from configs.constants import (BATCH_SIZE, LATENT_DIM, ML_WINDOW_OVERLAP,
                                NEG_DIST, POS_NEIGHBOR, TIMESTEPS)
 
 from ..utils.tfrecord_utils import (PerWindowNormalization, get_all_files,
-                                    get_all_labels)
+                                    get_all_labels, print_dataset_size)
 from ..visualizer.source import Source
 from .deleteTFR import delete_old_files
 
@@ -26,7 +26,6 @@ num_emg_channels = Source.get_num_emg_channels()
 
 def clear_tensorboard_logs() -> None:
     delete_old_files(selected_type=["train", "validation"], parent_path=log_path, file_type="*.v2")
-
 
 def load_and_parse_window_csv(filepath):
     text = tf.io.read_file(filepath)
@@ -77,25 +76,35 @@ def run_clr() -> None:
         # ---------------- ---------------- ----------------
 
         train_file_ds = load_fileset('train')
-        train_ds = (
+        train_samples_ds = (
             train_file_ds
             .flat_map(load_and_parse_window_csv)  # one file at a time
+        )
+
+        print_dataset_size(train_samples_ds, 'train')
+
+        train_ds = (
+            train_samples_ds
             .shuffle(buffer_size=4096)
-            .repeat()
+            # .repeat()
             .batch(batch_size=BATCH_SIZE, drop_remainder=True)
             .prefetch(tf.data.AUTOTUNE)
         )
 
         validation_file_ds = load_fileset('validate')
-        validation_ds = (
+        validation_samples__ds = (
             validation_file_ds
             .flat_map(load_and_parse_window_csv)  # one file at a time
-            .repeat()
-            .batch(batch_size=BATCH_SIZE, drop_remainder=False)
+        )
+
+        print_dataset_size(validation_file_ds, 'validate')
+
+        validation_ds = (
+            validation_samples__ds
+            .batch(batch_size=BATCH_SIZE, drop_remainder=True)
             .prefetch(tf.data.AUTOTUNE)
         )
 
-        ## Optimize this no need for train_ds as a dataset and also train steps per epoch
         ## check if the its working well end-to-end
 
         train_steps_per_epoch = sum(1 for _ in train_ds)
@@ -121,7 +130,7 @@ def run_clr() -> None:
             neg_dist = tf.reduce_sum(tf.square(anchor - negative), axis=1)
             loss = tf.maximum(pos_dist - neg_dist + margin, 0.0)
             return tf.reduce_mean(loss)
-        
+
         class TripletModel(tf.keras.Model):
             def __init__(self, embedding_model, margin=0.5):
                 super().__init__()
@@ -145,7 +154,7 @@ def run_clr() -> None:
                 self.optimizer.apply_gradients(zip(grads, self.embedding_model.trainable_variables))
                 self.loss_tracker.update_state(loss)
                 return {"loss": self.loss_tracker.result()}
-            
+
             def test_step(self, data):
                 a_embed, p_embed, n_embed = self(data, training=False)
                 loss = triplet_loss(a_embed, p_embed, n_embed, self.margin)
@@ -161,7 +170,7 @@ def run_clr() -> None:
 
         history = model.fit(
             train_ds,
-            epochs=2,
+            epochs=5,
             steps_per_epoch=train_steps_per_epoch,
             validation_data = validation_ds,
             validation_steps=validation_steps_per_epoch
