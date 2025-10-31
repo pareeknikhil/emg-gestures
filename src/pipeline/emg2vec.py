@@ -1,16 +1,20 @@
+import json
 import os
 
 import mlflow
 import numpy as np
 import tensorflow as tf
-from tensorflow.keras import Model, layers
-from xgboost import train
+from mlflow.models import ModelSignature
+from mlflow.types.schema import Schema, TensorSpec
+from tensorflow.keras import Model, callbacks, layers
 
-from configs.constants import (BATCH_SIZE, LATENT_DIM, ML_WINDOW_OVERLAP,
-                               NEG_DIST, POS_NEIGHBOR, TIMESTEPS)
+from configs.constants import (BATCH_SIZE, BUFFER_SIZE, EPOCHS, LATENT_DIM,
+                               LEARNING_RATE, ML_WINDOW_OVERLAP, NEG_DIST,
+                               POS_NEIGHBOR, TIMESTEPS)
 
 from ..utils.tfrecord_utils import (PerWindowNormalization, get_all_files,
-                                    get_all_labels, print_dataset_size)
+                                    get_all_labels, get_num_labels,
+                                    print_dataset_size)
 from ..visualizer.source import Source
 from .deleteTFR import delete_old_files
 
@@ -19,6 +23,9 @@ log_path = os.environ.get('LOG_PATH')
 mlflow_path = os.environ.get('MLRUNS_PATH')
 depedency_path = os.environ.get('DEPENDENCY_FILE')
 dvc_path = os.environ.get('DVC_PATH')
+embedding_model_path = os.environ.get("EMBEDDING_MODEL_PATH")
+artifact_path = os.environ.get('ARTIFACTS_PATH')
+label_idx_mapping_path = os.environ.get('LABEL_IDX_MAPPING')
 
 
 selected_type = 'train'
@@ -26,6 +33,7 @@ num_emg_channels = Source.get_num_emg_channels()
 
 def clear_tensorboard_logs() -> None:
     delete_old_files(selected_type=["train", "validation"], parent_path=log_path, file_type="*.v2")
+
 
 def load_and_parse_window_csv(filepath):
     text = tf.io.read_file(filepath)
@@ -61,6 +69,16 @@ def load_and_parse_window_csv(filepath):
     return tf.data.Dataset.from_tensor_slices((anchors, positives, negatives))
 
 
+def read_dvc_version():
+    try:
+        with open(dvc_path, 'r') as f:
+            dvc_meta = yaml.safe_load(f)
+        dataset_version = dvc_meta['outs'][0]['md5']
+    except Exception as e:
+        print('Failed to read DVC File:', e)
+        dataset_version = 'XXX'
+    return dataset_version
+
 def run_clr() -> None:
     mlflow.set_tracking_uri(uri=mlflow_path)
     mlflow.set_experiment(experiment_name='emg-clr-embedding')
@@ -81,7 +99,7 @@ def run_clr() -> None:
             .flat_map(load_and_parse_window_csv)  # one file at a time
         )
 
-        print_dataset_size(train_samples_ds, 'train')
+        train_ds_size = print_dataset_size(train_samples_ds, 'train')
 
         train_ds = (
             train_samples_ds
@@ -97,7 +115,7 @@ def run_clr() -> None:
             .flat_map(load_and_parse_window_csv)  # one file at a time
         )
 
-        print_dataset_size(validation_file_ds, 'validate')
+        validation_ds_size = print_dataset_size(validation_file_ds, 'validate')
 
         validation_ds = (
             validation_samples__ds
@@ -109,6 +127,13 @@ def run_clr() -> None:
 
         train_steps_per_epoch = sum(1 for _ in train_ds)
         validation_steps_per_epoch = sum(1 for _ in validation_ds)
+
+        callback_list = [
+                callbacks.ModelCheckpoint(filepath=embedding_model_path, monitor="val_loss", save_best_only=True),
+                callbacks.TensorBoard(log_dir=log_path),
+                callbacks.ReduceLROnPlateau(monitor='val_loss', factor=0.5,
+                                patience=10, min_lr=0.00001, verbose=1)
+        ]
 
     # ---------------- ENCODER ----------------
         def build_encoder(input_shape=(TIMESTEPS, num_emg_channels), latent_dim=LATENT_DIM):
@@ -168,6 +193,30 @@ def run_clr() -> None:
         model = TripletModel(embedding_model)
         model.compile(optimizer = tf.keras.optimizers.Adam(0.01))
 
+        with open(f'{artifact_path}/model_summary.txt', 'w') as f:
+            model.summary(print_fn=lambda x: f.write(x + '\n'))
+
+        mlflow.log_artifact(f'{artifact_path}/model_summary.txt')
+        mlflow_dataset_train = mlflow.data.tensorflow_dataset.from_tensorflow(train_ds.take(1), digest=read_dvc_version())
+        mlflow.log_input(dataset=mlflow_dataset_train, context='training')
+
+        params = {
+            'batch_size' : BATCH_SIZE,
+            'sequence_length/timesteps' : TIMESTEPS,
+            'input_dimension' : num_emg_channels,
+            'window_overlap' : ML_WINDOW_OVERLAP,
+            'epochs' : EPOCHS,
+            'optimizer_name' : 'adam',
+            'learning_rate' : LEARNING_RATE,
+            'buffer_size' : BUFFER_SIZE,
+            'ReduceOnPlateau' : 'monitor:val_loss, factor:0.5, patience:10, min_lr:0.00001, verbose:1',
+            'number_of_classes' : get_num_labels(),
+            'train_size' : train_ds_size,
+            'validate_size' : validation_ds_size,
+        }
+
+        mlflow.log_params(params=params)
+
         history = model.fit(
             train_ds,
             epochs=5,
@@ -175,3 +224,18 @@ def run_clr() -> None:
             validation_data = validation_ds,
             validation_steps=validation_steps_per_epoch
             )
+        
+
+        model_input = Schema(inputs=[TensorSpec(type=np.dtype(np.float32), shape= (-1, TIMESTEPS, num_emg_channels), name="EMG_Channels_1_to_8 (OpenBCI)")])
+        model_output = Schema(inputs=[TensorSpec(type=np.dtype(np.float32), shape= (-1, LATENT_DIM), name="Embedding")])
+
+        model_signature = ModelSignature(inputs=model_input, outputs=model_output)
+
+        mlflow.keras.log_model(embedding_model, 'EMG2Vec', pip_requirements = depedency_path, signature=model_signature)
+
+        metrics = {
+            'best_val_loss' : min(history.history['val_loss']),
+            'best_train_loss' : min(history.history['loss'])
+        }
+
+        mlflow.log_metrics(metrics)

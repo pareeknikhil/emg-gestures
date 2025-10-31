@@ -24,8 +24,10 @@ def write_tfrecord(dataset: tf.data.Dataset, filename: str) -> None:
             serial_sample = serialize(window=window, label_one_hot=label_one_hot)
             writer.write(serial_sample)
 
-def print_dataset_size(dataset: tf.data.Dataset, name: str) -> None:
-    print(f'{name}: {sum(1 for _ in dataset)}')
+def print_dataset_size(dataset: tf.data.Dataset, name: str) -> int:
+    ds_size = sum(1 for _ in dataset)
+    print(f'{name}: {ds_size}')
+    return ds_size
 
 def serialize(window: tf.Tensor, label_one_hot: tf.Tensor) -> bytes:
     feature = {
