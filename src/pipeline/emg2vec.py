@@ -1,21 +1,25 @@
+import csv
 import json
 import os
 
 import mlflow
 import numpy as np
 import tensorflow as tf
+import yaml
 from mlflow.models import ModelSignature
 from mlflow.types.schema import Schema, TensorSpec
+from tensorboard.plugins import projector
 from tensorflow.keras import Model, callbacks, layers
 
 from configs.constants import (BATCH_SIZE, BUFFER_SIZE, EPOCHS, LATENT_DIM,
                                LEARNING_RATE, ML_WINDOW_OVERLAP, NEG_DIST,
-                               POS_NEIGHBOR, TIMESTEPS)
+                               POS_NEIGHBOR, TEST_BATCH_SIZE, TIMESTEPS)
 
 from ..utils.tfrecord_utils import (PerWindowNormalization, get_all_files,
                                     get_all_labels, get_num_labels,
                                     print_dataset_size)
 from ..visualizer.source import Source
+from .combineTFR import parse_tfrecord_fn
 from .deleteTFR import delete_old_files
 
 csv_path = os.environ.get('CSV_PATH')
@@ -26,6 +30,9 @@ dvc_path = os.environ.get('DVC_PATH')
 embedding_model_path = os.environ.get("EMBEDDING_MODEL_PATH")
 artifact_path = os.environ.get('ARTIFACTS_PATH')
 label_idx_mapping_path = os.environ.get('LABEL_IDX_MAPPING')
+tfrecord_path = os.environ.get('TFRECORD_PATH')
+combined_emg_path = os.environ.get('COMBINED_EMG_FILE')
+embedding_visualization_path = os.environ.get('EMBEDDING_TENSORBOARD')
 
 
 selected_type = 'train'
@@ -33,7 +40,6 @@ num_emg_channels = Source.get_num_emg_channels()
 
 def clear_tensorboard_logs() -> None:
     delete_old_files(selected_type=["train", "validation"], parent_path=log_path, file_type="*.v2")
-
 
 def load_and_parse_window_csv(filepath):
     text = tf.io.read_file(filepath)
@@ -68,6 +74,12 @@ def load_and_parse_window_csv(filepath):
 
     return tf.data.Dataset.from_tensor_slices((anchors, positives, negatives))
 
+def load_tfrecord(filename):
+    raw_dataset = tf.data.TFRecordDataset([filename])
+    return raw_dataset.map(parse_tfrecord_fn)
+
+def load_dataset(selected_type):
+    return load_tfrecord(filename=f"{tfrecord_path}/{selected_type}/{combined_emg_path}")
 
 def read_dvc_version():
     try:
@@ -110,18 +122,26 @@ def run_clr() -> None:
         )
 
         validation_file_ds = load_fileset('validate')
-        validation_samples__ds = (
+        validation_samples_ds = (
             validation_file_ds
             .flat_map(load_and_parse_window_csv)  # one file at a time
         )
 
-        validation_ds_size = print_dataset_size(validation_file_ds, 'validate')
+        validation_ds_size = print_dataset_size(validation_samples_ds, 'validate')
 
         validation_ds = (
-            validation_samples__ds
+            validation_samples_ds
             .batch(batch_size=BATCH_SIZE, drop_remainder=True)
             .prefetch(tf.data.AUTOTUNE)
         )
+
+        test_ds = load_dataset(selected_type='test')
+        test_ds = (test_ds
+            .batch(batch_size=TEST_BATCH_SIZE)
+            .prefetch(buffer_size=tf.data.AUTOTUNE)
+            )
+
+        test_ds_size = print_dataset_size(load_dataset(selected_type='test'), 'test')
 
         ## check if the its working well end-to-end
 
@@ -194,7 +214,7 @@ def run_clr() -> None:
         model.compile(optimizer = tf.keras.optimizers.Adam(0.01))
 
         with open(f'{artifact_path}/model_summary.txt', 'w') as f:
-            model.summary(print_fn=lambda x: f.write(x + '\n'))
+            embedding_model.summary(print_fn=lambda x: f.write(x + '\n'))
 
         mlflow.log_artifact(f'{artifact_path}/model_summary.txt')
         mlflow_dataset_train = mlflow.data.tensorflow_dataset.from_tensorflow(train_ds.take(1), digest=read_dvc_version())
@@ -213,6 +233,7 @@ def run_clr() -> None:
             'number_of_classes' : get_num_labels(),
             'train_size' : train_ds_size,
             'validate_size' : validation_ds_size,
+            'test_size' : test_ds_size
         }
 
         mlflow.log_params(params=params)
@@ -222,7 +243,8 @@ def run_clr() -> None:
             epochs=5,
             steps_per_epoch=train_steps_per_epoch,
             validation_data = validation_ds,
-            validation_steps=validation_steps_per_epoch
+            validation_steps=validation_steps_per_epoch,
+            callbacks=callback_list
             )
         
 
@@ -239,3 +261,63 @@ def run_clr() -> None:
         }
 
         mlflow.log_metrics(metrics)
+
+        with open(label_idx_mapping_path) as file:
+            label_idx_map = json.load(file)
+
+        keys = tf.constant([int(k) for k in label_idx_map.keys()], dtype=tf.int64)
+        values = tf.constant(list(label_idx_map.values()), dtype=tf.string)
+
+        table = tf.lookup.StaticHashTable(initializer=tf.lookup.KeyValueTensorInitializer(keys, values),
+                                          default_value="UNKNOWN")
+
+        def map_labels(window, label):
+            idx = tf.argmax(label, axis=-1)
+            gesture = table.lookup(idx)
+            latent_vector = embedding_model(window, training=False)
+            return latent_vector, gesture
+
+        mapped_ds = test_ds.map(map_labels)
+
+        test_labels = []
+        test_embeddings = []
+
+        for embedding, label in mapped_ds:
+            test_embeddings.append(embedding.numpy())
+            test_labels.extend([tf.compat.as_str_any(l.numpy()) for l in label])
+
+        test_embeddings = np.concatenate(test_embeddings, axis=0)
+
+        metadata_path = os.path.join(embedding_visualization_path, "metadata.tsv")
+
+        with open(metadata_path, "w") as f:
+            for label in test_labels:
+                f.write(f"{label}\n")
+
+        embedding_var = tf.Variable(test_embeddings, name="latent_embeddings")
+
+        checkpoint = tf.train.Checkpoint(embedding=embedding_var)
+        checkpoint.save(os.path.join(embedding_visualization_path, "embedding.ckpt"))
+
+        config = projector.ProjectorConfig()
+        embedding = config.embeddings.add()
+        embedding.tensor_name = "embedding/.ATTRIBUTES/VARIABLE_VALUE"
+        embedding.metadata_path = "metadata.tsv"  # relative path to log_dir
+        projector.visualize_embeddings(embedding_visualization_path, config)
+
+        mlflow.log_artifacts(local_dir=log_path, artifact_path='tensorboard_logs')
+
+        orange_csv_path = f"{artifact_path}/embeddings_with_labels.csv"
+
+        with open(orange_csv_path, "w", newline="") as f:
+            writer = csv.writer(f)
+            # header: first column is label, then embedding_0 ... embedding_{D-1}
+            header = ["label"] + [f"dim_{i}" for i in range(test_embeddings.shape[1])]
+            writer.writerow(header)
+
+            for label, emb in zip(test_labels, test_embeddings):
+                writer.writerow([label] + emb.tolist())
+
+        print(f"Saved {len(test_labels)} rows to {orange_csv_path}")
+
+        mlflow.log_artifact(orange_csv_path)
