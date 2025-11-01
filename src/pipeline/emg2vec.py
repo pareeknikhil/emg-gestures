@@ -19,7 +19,6 @@ from ..utils.tfrecord_utils import (PerWindowNormalization, get_all_files,
                                     get_all_labels, get_num_labels,
                                     print_dataset_size)
 from ..visualizer.source import Source
-from .combineTFR import parse_tfrecord_fn
 from .deleteTFR import delete_old_files
 
 csv_path = os.environ.get('CSV_PATH')
@@ -41,6 +40,18 @@ num_emg_channels = Source.get_num_emg_channels()
 def clear_tensorboard_logs() -> None:
     delete_old_files(selected_type=["train", "validation"], parent_path=log_path, file_type="*.v2")
 
+def parse_tfrecord_fn(example_proto):
+    feature_description = {
+        'sequence': tf.io.FixedLenFeature([], tf.string), ## add default_value field : [TECH DEBT]
+        'label': tf.io.FixedLenFeature([12], tf.int64) ## add default value field : [TECH DEBT] 
+    }
+    parsed_example = tf.io.parse_single_example(serialized=example_proto, features=feature_description)
+    window = tf.io.parse_tensor(serialized=parsed_example['sequence'], out_type=tf.float32)
+    label = parsed_example['label']
+    window.set_shape([TIMESTEPS, num_emg_channels])
+    label.set_shape([12])
+    return window, label
+
 def load_and_parse_window_csv(filepath):
     text = tf.io.read_file(filepath)
     lines = tf.strings.split(text, sep='\n')
@@ -59,7 +70,8 @@ def load_and_parse_window_csv(filepath):
         indices + tf.random.uniform([num_windows], -POS_NEIGHBOR, POS_NEIGHBOR+1, dtype=tf.int32),
         0, num_windows-1
         )
-
+    
+    # tf.print("***", filepath, num_windows)
     def sample_neg(idx):
         valid = tf.concat([
             tf.range(0, tf.maximum(0, idx-NEG_DIST)),
@@ -136,7 +148,8 @@ def run_clr() -> None:
         )
 
         test_ds = load_dataset(selected_type='test')
-        test_ds = (test_ds
+        test_ds = (
+            test_ds
             .batch(batch_size=TEST_BATCH_SIZE)
             .prefetch(buffer_size=tf.data.AUTOTUNE)
             )
@@ -240,7 +253,7 @@ def run_clr() -> None:
 
         history = model.fit(
             train_ds,
-            epochs=5,
+            epochs=EPOCHS,
             steps_per_epoch=train_steps_per_epoch,
             validation_data = validation_ds,
             validation_steps=validation_steps_per_epoch,
