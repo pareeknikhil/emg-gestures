@@ -11,7 +11,7 @@ from ..utils.data_processing import get_hann_window
 from .source import Source
 
 
-## Captures 2 Hz to 125 Hz
+## Captures 2(assuming 125 samples in one spectrogram-window) Hz to 125 Hz
 class Spec:
     COLOR_MAP = cm.get_cmap(name='inferno')
     HANN_WINDOW = get_hann_window(window_size=SPECTROGRAM_WINDOW, skew=True)
