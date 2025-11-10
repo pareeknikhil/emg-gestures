@@ -13,6 +13,7 @@ from src.pipeline.gesture_embedding import run_model
 from src.pipeline.labelTFR import create_window, print_sample_collected
 from src.pipeline.rae_embedding import run_embedding
 from src.pipeline.scale import print_scaled_sample_collected, scale
+from src.pipeline.spec import print_spectogram_sample_collected, spectogram
 from src.utils import \
     gpu_config  # # [TECH DEBT: add a method instead of script-run]
 
@@ -25,20 +26,24 @@ elif selected_type == "embedding":
 elif selected_type == 'clr':
     run_clr()
 else:
-    delete_old_files(selected_type=[selected_type]) ## [TECH DEBT: add different folder for combined EMG (removes circular dependency)]
+    # delete_old_files(selected_type=[selected_type]) ## [TECH DEBT: add different folder for combined EMG (removes circular dependency)]
 
-    time.sleep(2)
+    # time.sleep(2)
 
-    create_window(selected_type=selected_type)
+    # create_window(selected_type=selected_type)
 
-    print_sample_collected(selected_type=selected_type)
+    # print_sample_collected(selected_type=selected_type)
 
-    time.sleep(2)
+    # time.sleep(2)
 
-    combine_labels(selected_type=selected_type)
+    # combine_labels(selected_type=selected_type)
 
-    print_combine_sample_collected(selected_type=selected_type)
+    # print_combine_sample_collected(selected_type=selected_type)
 
-    scale(selected_type=selected_type)
+    # scale(selected_type=selected_type)
 
-    print_scaled_sample_collected(selected_type=selected_type)
+    # print_scaled_sample_collected(selected_type=selected_type)
+
+    spectogram(selected_type=selected_type)
+
+    print_spectogram_sample_collected(selected_type=selected_type)
