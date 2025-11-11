@@ -26,23 +26,23 @@ elif selected_type == "embedding":
 elif selected_type == 'clr':
     run_clr()
 else:
-    # delete_old_files(selected_type=[selected_type]) ## [TECH DEBT: add different folder for combined EMG (removes circular dependency)]
+    delete_old_files(selected_type=[selected_type]) ## [TECH DEBT: add different folder for combined EMG (removes circular dependency)]
 
-    # time.sleep(2)
+    time.sleep(2)
 
-    # create_window(selected_type=selected_type)
+    create_window(selected_type=selected_type)
 
-    # print_sample_collected(selected_type=selected_type)
+    print_sample_collected(selected_type=selected_type)
 
-    # time.sleep(2)
+    time.sleep(2)
 
-    # combine_labels(selected_type=selected_type)
+    combine_labels(selected_type=selected_type)
 
-    # print_combine_sample_collected(selected_type=selected_type)
+    print_combine_sample_collected(selected_type=selected_type)
 
-    # scale(selected_type=selected_type)
+    scale(selected_type=selected_type)
 
-    # print_scaled_sample_collected(selected_type=selected_type)
+    print_scaled_sample_collected(selected_type=selected_type)
 
     spectogram(selected_type=selected_type)
 

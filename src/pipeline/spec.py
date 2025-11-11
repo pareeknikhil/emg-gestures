@@ -35,22 +35,18 @@ def stft_color(slices, min_db=-5, max_db=10):
 HANN_WINDOW = get_hann_window(window_size=TIMESTEPS, skew=True)
 COLOR_MAP = cm.get_cmap(name='inferno')
 
-def sample_fn(window, label):
-    tf.print("hello")
-    return label
 
 def spectogram(selected_type) -> None:
     raw_dataset = load_dataset(selected_type)
-    new_dataset = raw_dataset.map(sample_fn)
-    for elm in new_dataset:
-        print(elm.numpy())
-        # window = window.numpy()
-        # slices = np.fft.rfft(window*HANN_WINDOW, axis=1)
-        # new_slice = stft_color(slices)
-        # print(new_slice.shape)
-        # new_window = tf.convert_to_tensor(new_slice, dtype=np.float32)
+    samples = []
 
-        # write_tfrecord(dataset=(new_window, label), filename=f"{tfrecord_path}/{selected_type}/{spec_path}")
+    for window, label in raw_dataset:
+        window = window.numpy()
+        slices = np.fft.rfft(window*HANN_WINDOW[:, np.newaxis], axis=0)
+        new_slice = stft_color(slices)
+        new_window = tf.convert_to_tensor(new_slice, dtype=np.float32)
+        samples.append((new_window, label))
+    write_tfrecord(dataset=samples, filename=f"{tfrecord_path}/{selected_type}/{spec_path}")
 
 
 def print_spectogram_sample_collected(selected_type) -> None:
