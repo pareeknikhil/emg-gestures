@@ -26,10 +26,9 @@ def stft_color(slices, min_db=-5, max_db=10):
     slices = librosa.amplitude_to_db(slices)
     slices = slices.clip(min_db, max_db)
     slices = (slices-min_db) / (max_db-min_db)
-    # slices = COLOR_MAP(slices)
-    # slices = (slices * 255).astype("u1")
-    # return slices[:, :, :3]
-    return slices
+    slices = COLOR_MAP(slices)
+    slices = (slices * 255).astype("u1")
+    return slices[:, :, :3]
 
 
 HANN_WINDOW = get_hann_window(window_size=TIMESTEPS, skew=True)
@@ -56,3 +55,6 @@ def print_spectogram_sample_collected(selected_type) -> None:
     dataset = tf.data.TFRecordDataset(file_name)
     print_list.append(["All", sum(1 for _ in dataset)])
     print(tabulate(tabular_data=print_list, headers=headers, tablefmt="grid"))
+
+''' 1) validation remaining (print_spectogram_sample_collected)
+2) chAnge architecture of classification with Conv1D to accomodate new 3 dimensions'''
