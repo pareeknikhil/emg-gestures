@@ -10,7 +10,7 @@ case $1 in
     python -B "$PYTHONPATH/scripts/app.py" 
     ;;
 
-    train|validate|test|model|embedding|clr)
+    train|validate|test|model|embedding|clr|spec)
     python -B "$PYTHONPATH/scripts/pipeline.py" "$1"
     ;;
 

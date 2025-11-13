@@ -14,17 +14,20 @@ from src.pipeline.labelTFR import create_window, print_sample_collected
 from src.pipeline.rae_embedding import run_embedding
 from src.pipeline.scale import print_scaled_sample_collected, scale
 from src.pipeline.spec import print_spectogram_sample_collected, spectogram
+from src.pipeline.spec_embedding import run_spec
 from src.utils import \
     gpu_config  # # [TECH DEBT: add a method instead of script-run]
 
 selected_type = sys.argv[1]
 
-if selected_type == "model":
+if selected_type == 'model':
     run_model()
-elif selected_type == "embedding":
+elif selected_type == 'embedding':
     run_embedding()
 elif selected_type == 'clr':
     run_clr()
+elif selected_type == 'spec':
+    run_spec()
 else:
     delete_old_files(selected_type=[selected_type]) ## [TECH DEBT: add different folder for combined EMG (removes circular dependency)]
 
